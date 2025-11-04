@@ -1,75 +1,117 @@
-import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Events } from "discord.js";
+import { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import dotenv from "dotenv";
 dotenv.config();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-  partials: [Partials.Channel],
+  partials: [Partials.Message, Partials.Channel],
 });
 
+const TOKEN = process.env.DISCORD_TOKEN;
+let bossList = [];
+
+// =======================
+// 봇 로그인
+// =======================
 client.once("ready", () => {
   console.log(`✅ ${client.user.tag} 로그인 완료!`);
 });
 
-// ✅ 명령 처리
-client.on(Events.MessageCreate, async (message) => {
+// =======================
+// 명령어 처리 (.등록, .목록, .참여)
+// =======================
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
   if (!message.content.startsWith(".")) return;
 
-  const [command] = message.content.slice(1).split(" ");
+  const args = message.content.slice(1).trim().split(/ +/);
+  const command = args.shift()?.toLowerCase();
 
-  // 🟢 .시작
-  if (command === "시작") {
-    const modal = new ModalBuilder()
-      .setCustomId("bossSetup")
-      .setTitle("보스 정보 입력");
+  // 🔹 보스 등록 (.등록 타가르 1 18:30)
+  if (command === "등록") {
+    const [bossName, score, time] = args;
 
-    const bossNameInput = new TextInputBuilder()
-      .setCustomId("bossName")
-      .setLabel("보스 이름")
-      .setStyle(TextInputStyle.Short);
+    if (!bossName || !score || !time) {
+      return message.reply("❌ 사용법: `.등록 보스이름 점수 시간` (예: `.등록 타가르 1 18:30`)");
+    }
 
-    const scoreInput = new TextInputBuilder()
-      .setCustomId("bossScore")
-      .setLabel("점수 (숫자만)")
-      .setStyle(TextInputStyle.Short);
+    bossList.push({ name: bossName, score, time, participants: [], notified: false });
+    const embed = new EmbedBuilder()
+      .setColor(0x00ff99)
+      .setTitle(`✅ ${bossName} (${score}점) 보스가 ${time}에 등록되었습니다!`)
+      .setTimestamp();
 
-    const firstRow = new ActionRowBuilder().addComponents(bossNameInput);
-    const secondRow = new ActionRowBuilder().addComponents(scoreInput);
-    modal.addComponents(firstRow, secondRow);
-
-    await message.channel.send({
-      content: `${message.author.username}님, 보스 정보를 입력하세요.`,
-    });
-    await message.author.send({ content: "보스 시작을 위한 정보를 입력해주세요.", components: [] }).catch(() => {});
+    await message.channel.send({ embeds: [embed] });
   }
-});
 
-// 🟣 모달 제출 시
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isModalSubmit()) return;
+  // 🔹 등록된 보스 목록 보기 (.목록)
+  else if (command === "목록") {
+    if (bossList.length === 0) return message.reply("📭 등록된 보스가 없습니다.");
 
-  if (interaction.customId === "bossSetup") {
-    const bossName = interaction.fields.getTextInputValue("bossName");
-    const bossScore = interaction.fields.getTextInputValue("bossScore");
+    const list = bossList
+      .map((b, i) => `💎 ${i + 1}. ${b.name} (${b.score}점) - ${b.time}`)
+      .join("\n");
 
     const embed = new EmbedBuilder()
-      .setColor("#00FFB2")
-      .setTitle(`💎 ${bossName}`)
-      .setDescription(`점수: ${bossScore}점\n참여자: 없음`)
-      .setFooter({ text: "참여하려면 아래 버튼을 클릭하세요!" });
+      .setColor(0x0099ff)
+      .setTitle("📋 등록된 보스 목록")
+      .setDescription(list);
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("join").setLabel("✅ 참여하기").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("list").setLabel("📜 명단보기").setStyle(ButtonStyle.Secondary)
-    );
-
-    await interaction.reply({ embeds: [embed], components: [row] });
-  }
-
-  // 🟢 버튼: 참여하기
-  if (interaction.isButton() && interaction.customId === "join") {
-    await interaction.reply({ content: `✅ ${interaction.user.username}님이 참여했습니다!`, ephemeral: true });
+    await message.channel.send({ embeds: [embed] });
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// =======================
+// 자동 젠 알림 (1분마다 확인)
+// =======================
+setInterval(async () => {
+  const now = new Date();
+  const currentTime = `${now.getHours()}:${now.getMinutes().toString().padStart(2, "0")}`;
+
+  for (const boss of bossList) {
+    if (boss.time === currentTime && !boss.notified) {
+      boss.notified = true;
+
+      const embed = new EmbedBuilder()
+        .setColor(0xffc107)
+        .setTitle(`⚔️ ${boss.name} 젠 시간입니다!`)
+        .setDescription(`점수: ${boss.score}점\n\n참여하려면 아래 버튼을 눌러주세요.`)
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`join_${boss.name}`)
+          .setLabel("✅ 참여하기")
+          .setStyle(ButtonStyle.Success)
+      );
+
+      const channel = client.channels.cache.find(
+        (ch) => ch.name === "보스알림" || ch.name === "보스시간표"
+      );
+      if (channel) await channel.send({ embeds: [embed], components: [row] });
+    }
+  }
+}, 60000); // 1분마다 확인
+
+// =======================
+// 참여 버튼 클릭 이벤트
+// =======================
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  const bossName = interaction.customId.replace("join_", "");
+  const boss = bossList.find((b) => b.name === bossName);
+  if (!boss) return;
+
+  if (!boss.participants.includes(interaction.user.username)) {
+    boss.participants.push(interaction.user.username);
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(0x00ff99)
+    .setTitle(`✅ ${boss.name} 참여자 목록`)
+    .setDescription(boss.participants.map((p, i) => `${i + 1}. ${p}`).join("\n") || "아직 없음");
+
+  await interaction.update({ embeds: [embed], components: interaction.message.components });
+});
+
+client.login(TOKEN);

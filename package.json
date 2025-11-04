@@ -1,10 +1,14 @@
 {
   "name": "keriabot",
   "version": "1.0.0",
+  "description": "Boss participation Discord bot",
   "main": "index.js",
   "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "discord.js": "^14.24.2",
-    "dotenv": "^17.2.3"
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1"
   }
 }
