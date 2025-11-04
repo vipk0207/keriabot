@@ -1,14 +1,16 @@
 {
-  "name": "keriabot",
-  "version": "1.0.0",
-  "description": "Boss participation Discord bot",
+  "name": "boss-alert-bot",
+  "version": "3.0.0",
+  "description": "보스 젠 시간 자동 알림 및 음성 알림 디스코드 봇",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.13.0",
-    "dotenv": "^16.3.1"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "@discordjs/voice": "^0.17.0",
+    "google-tts-api": "^2.0.1"
   }
 }
